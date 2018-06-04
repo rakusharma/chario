@@ -22,9 +22,12 @@ struct chario {
 	struct device *device;
 };
 
+/*/dev*/
 #define DRV_NAME "chario"
+/*/sys/classes*/
 #define CLASS_NAME "chariocl"
 
+/*main data type*/
 struct chario chario;
 
 int chario_open(struct inode *node, struct file* fi)
@@ -51,6 +54,7 @@ ssize_t chario_write(struct file *fi, const char __user *us, size_t si, loff_t *
 	return 0;
 }
 
+/*chario file operations*/
 static struct file_operations chario_fops = {
 	.owner = THIS_MODULE,
 	.open = chario_open,
@@ -70,8 +74,12 @@ static int __init chario_init(void)
 		return rc;
 	}
 
+
+	/*major number*/
 	chario.major = MAJOR(dev_id);
 	
+	/*class & device creation leads to /sys/classes and /dev*/
+	/*ldd shows script method which is not needed if we use this*/
 	chario.class = class_create(THIS_MODULE, CLASS_NAME);
 	if(IS_ERR(chario.class)) {
 		unregister_chrdev_region(MKDEV(chario.major, 0), 1);
@@ -79,7 +87,6 @@ static int __init chario_init(void)
 	}
 
 	chario.device = device_create(chario.class, NULL, dev_id, NULL, CLASS_NAME);
-
 	if(IS_ERR(chario.device)) {
 		class_destroy(chario.class);
 		unregister_chrdev_region(MKDEV(chario.major, 0), 1);
@@ -87,9 +94,7 @@ static int __init chario_init(void)
 	}
 
 	cdev_init(&chario.cdev, &chario_fops);
-
 	rc = cdev_add(&chario.cdev, chario.major, 1);
-
 	if (rc) {
 		device_destroy(chario.class, 1);
 		class_destroy(chario.class);
