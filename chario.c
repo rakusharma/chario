@@ -12,7 +12,7 @@
 #include<linux/fs.h>
 #include<linux/device.h>
 #include<linux/cdev.h>
-
+#include<asm/uaccess.h>
 MODULE_LICENSE("GPL");
 
 struct chario {
@@ -32,6 +32,12 @@ struct chario chario;
 
 int chario_open(struct inode *node, struct file* fi)
 {
+	struct chario *chario; 
+
+	chario = container_of(node->i_cdev, struct chario, cdev);
+
+	fi->private_data = chario;
+
 
 	return 0;
 }
@@ -54,11 +60,38 @@ ssize_t chario_write(struct file *fi, const char __user *us, size_t si, loff_t *
 	return 0;
 }
 
+#define CHARIO_GET_REG_IOCTL _IOR(0xCC, 0x01, unsigned int)
+#define CHARIO_SET_REG_IOCTL _IOW(0xCC, 0x02, unsigned int)
+
+long chario_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	struct chario *chario = filp->private_data;
+	int ret;
+
+	switch(cmd) {
+		case CHARIO_GET_REG_IOCTL:
+			ret = __put_user(0x11, (int __user *)arg);
+			return ret;
+			break;
+		case CHARIO_SET_REG_IOCTL:
+			chario = chario;
+			break;
+		default:
+			break;
+
+	}
+
+
+	return -EINVAL;
+
+}
+
 /*chario file operations*/
 static struct file_operations chario_fops = {
 	.owner = THIS_MODULE,
 	.open = chario_open,
 	.release = chario_close,
+	.unlocked_ioctl = chario_ioctl,
 	.read = chario_read,
 	.write = chario_write
 
@@ -114,6 +147,8 @@ static void __exit chario_exit(void)
 	unregister_chrdev_region(MKDEV(chario.major, 0), 1);
 
 }
+
+
 
 module_init(chario_init);
 module_exit(chario_exit);
