@@ -12,7 +12,8 @@
 #include<linux/fs.h>
 #include<linux/device.h>
 #include<linux/cdev.h>
-#include<asm/uaccess.h>
+#include<linux/uaccess.h>
+
 MODULE_LICENSE("GPL");
 
 struct chario {
@@ -23,7 +24,7 @@ struct chario {
 };
 
 /*/dev*/
-#define DRV_NAME "chario"
+#define DEVICE_NAME "chariod"
 /*/sys/classes*/
 #define CLASS_NAME "chariocl"
 
@@ -37,6 +38,8 @@ int chario_open(struct inode *node, struct file* fi)
 	chario = container_of(node->i_cdev, struct chario, cdev);
 
 	fi->private_data = chario;
+
+	printk("file gets opened\n");
 
 
 	return 0;
@@ -68,6 +71,8 @@ long chario_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	struct chario *chario = filp->private_data;
 	int ret;
 
+	printk("%s command %4d\n", __func__, cmd);
+
 	switch(cmd) {
 		case CHARIO_GET_REG_IOCTL:
 			ret = __put_user(0x11, (int __user *)arg);
@@ -75,6 +80,7 @@ long chario_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			break;
 		case CHARIO_SET_REG_IOCTL:
 			chario = chario;
+			return 0;
 			break;
 		default:
 			break;
@@ -90,49 +96,41 @@ long chario_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 static struct file_operations chario_fops = {
 	.owner = THIS_MODULE,
 	.open = chario_open,
-	.release = chario_close,
 	.unlocked_ioctl = chario_ioctl,
 	.read = chario_read,
-	.write = chario_write
+	.write = chario_write,
+	.release = chario_close,
 
 };
 
 static int __init chario_init(void)
 {
-	dev_t dev_id;
-	int rc;
-
-	if((rc = alloc_chrdev_region(&dev_id, 0, 1, DRV_NAME))) {
-		pr_err("Unable to register chario\n");
-		return rc;
-	}
-
 
 	/*major number*/
-	chario.major = MAJOR(dev_id);
-	
+	chario.major = register_chrdev(0, DEVICE_NAME, &chario_fops);
+	if (( chario.major < 0 )) {
+		pr_err("Unable to register chario\n");
+		return chario.major;
+	}
+
+	printk("Registered with major %4d\n",chario.major);
+
+
 	/*class & device creation leads to /sys/classes and /dev*/
 	/*ldd shows script method which is not needed if we use this*/
 	chario.class = class_create(THIS_MODULE, CLASS_NAME);
 	if(IS_ERR(chario.class)) {
-		unregister_chrdev_region(MKDEV(chario.major, 0), 1);
+		printk("class create failed\n");
+		unregister_chrdev(chario.major, DEVICE_NAME);
 		return PTR_ERR(chario.class);
 	}
 
-	chario.device = device_create(chario.class, NULL, dev_id, NULL, CLASS_NAME);
+	chario.device = device_create(chario.class, NULL, MKDEV(chario.major, 0), NULL, DEVICE_NAME);
 	if(IS_ERR(chario.device)) {
+		printk("device create failed\n");
 		class_destroy(chario.class);
-		unregister_chrdev_region(MKDEV(chario.major, 0), 1);
+		unregister_chrdev(chario.major, DEVICE_NAME);
 		return PTR_ERR(chario.device);
-	}
-
-	cdev_init(&chario.cdev, &chario_fops);
-	rc = cdev_add(&chario.cdev, chario.major, 1);
-	if (rc) {
-		device_destroy(chario.class, 1);
-		class_destroy(chario.class);
-		unregister_chrdev_region(MKDEV(chario.major, 0), 1);
-		return 0;
 	}
 
 
@@ -142,9 +140,10 @@ static int __init chario_init(void)
 static void __exit chario_exit(void)
 {
 
-	device_destroy(chario.class, 1);
+	device_destroy(chario.class, MKDEV(chario.major, 0));
+	class_unregister(chario.class);
 	class_destroy(chario.class);
-	unregister_chrdev_region(MKDEV(chario.major, 0), 1);
+	unregister_chrdev(chario.major, DEVICE_NAME);
 
 }
 
